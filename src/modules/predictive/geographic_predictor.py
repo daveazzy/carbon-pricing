@@ -46,7 +46,7 @@ class GeographicPredictor:
         self.df['transaction_date'] = pd.to_datetime(self.df['transaction_date'])
         self.current_year = datetime.now().year
         
-        # Geographic analysis results
+        # resultados
         self.country_analysis = None
         self.regional_analysis = None
         self.category_country_matrix = None
@@ -63,20 +63,20 @@ class GeographicPredictor:
         Creates country-level aggregations and regional groupings.
         """
         
-        # Country-level aggregations
+        # nivel de agregação do país
         self.country_data = self.df.groupby('project_country').agg({
             'credits_quantity': ['sum', 'count', 'mean'],
             'project_category': 'nunique',
             'transaction_date': ['min', 'max']
         }).round(2)
         
-        # Flatten column names
+        # achatar nomes das colunas
         self.country_data.columns = [
             'total_volume', 'transaction_count', 'avg_volume', 
             'categories_count', 'first_transaction', 'last_transaction'
         ]
         
-        # Calculate market metrics
+        # calcular metricas do mercado
         self.country_data['market_age_years'] = (
             self.country_data['last_transaction'] - self.country_data['first_transaction']
         ).dt.days / 365.25
@@ -90,10 +90,10 @@ class GeographicPredictor:
             self.country_data['total_volume'] / self.country_data['total_volume'].sum() * 100
         ).round(3)
         
-        # Regional groupings (simplified)
+        # agrupamento regional 
         self.country_data['region'] = self.country_data.index.map(self._assign_region)
         
-        # Category-country matrix
+        # matrix país/categoria
         self.category_country_matrix = pd.crosstab(
             self.df['project_category'], 
             self.df['project_country'], 
@@ -113,7 +113,7 @@ class GeographicPredictor:
             Region name
         """
         
-        # Simplified regional mapping
+        # mapeamento regional
         regions = {
             'AFRICA': ['Nigeria', 'South Africa', 'Kenya', 'Ghana', 'Egypt', 'Morocco', 'Ethiopia', 'Tanzania', 'Uganda', 'Zimbabwe'],
             'ASIA': ['China', 'India', 'Indonesia', 'Thailand', 'Malaysia', 'Philippines', 'Vietnam', 'Bangladesh', 'Pakistan', 'Sri Lanka'],
@@ -137,24 +137,24 @@ class GeographicPredictor:
         Performs comprehensive analysis of country and regional trends.
         """
         
-        # Time-based analysis
+        # analise temporal
         recent_cutoff = pd.Timestamp(self.current_year - 3, 1, 1, tz='UTC')
         baseline_cutoff = pd.Timestamp(self.current_year - 6, 1, 1, tz='UTC')
         
-        # Recent vs baseline analysis by country
+        # recente vs base por país
         recent_data = self.df[self.df['transaction_date'] >= recent_cutoff]
         baseline_data = self.df[
             (self.df['transaction_date'] >= baseline_cutoff) & 
             (self.df['transaction_date'] < recent_cutoff)
         ]
         
-        # Country growth analysis
+        # crescimento por país
         self.country_analysis = self._calculate_country_growth(recent_data, baseline_data)
         
-        # Regional analysis
+        # analise regional
         self.regional_analysis = self._calculate_regional_patterns()
         
-        # Expansion opportunities
+        # oportunidades de expansão
         self.expansion_opportunities = self._identify_expansion_opportunities()
     
     
@@ -170,39 +170,36 @@ class GeographicPredictor:
             DataFrame with country growth analysis
         """
         
-        # Recent metrics
         recent_metrics = recent_data.groupby('project_country').agg({
             'credits_quantity': 'sum',
             'project_category': 'nunique'
         }).rename(columns={'credits_quantity': 'recent_volume', 'project_category': 'recent_categories'})
         
-        # Baseline metrics
         baseline_metrics = baseline_data.groupby('project_country').agg({
             'credits_quantity': 'sum',
             'project_category': 'nunique'
         }).rename(columns={'credits_quantity': 'baseline_volume', 'project_category': 'baseline_categories'})
         
-        # Merge and calculate growth
+        # juntar e calcular crescimento
         growth_df = recent_metrics.join(baseline_metrics, how='outer').fillna(0)
         
-        # Calculate growth rates
+        # calcular indices de crescimento
         growth_df['volume_growth_rate'] = np.where(
             growth_df['baseline_volume'] > 0,
             ((growth_df['recent_volume'] - growth_df['baseline_volume']) / growth_df['baseline_volume'] * 100),
-            np.where(growth_df['recent_volume'] > 0, 999, 0)  # New markets get 999% (emerging)
+            np.where(growth_df['recent_volume'] > 0, 999, 0) 
         ).round(1)
         
         growth_df['category_expansion'] = (
             growth_df['recent_categories'] - growth_df['baseline_categories']
         ).astype(int)
         
-        # Market classification
+        # classificação do mercado
         growth_df['market_status'] = growth_df.apply(self._classify_market_status, axis=1)
         
-        # Add country data
         growth_df = growth_df.join(self.country_data[['market_share', 'market_age_years', 'region']])
         
-        # Calculate opportunity score
+        # calcular o score de oportunidade
         growth_df['opportunity_score'] = self._calculate_opportunity_score(growth_df)
         
         return growth_df.sort_values('opportunity_score', ascending=False)
@@ -250,17 +247,15 @@ class GeographicPredictor:
             Series with opportunity scores (0-100)
         """
         
-        # Normalize components to 0-100 scale
+        # normalizar escala para 0 a 100
         volume_component = np.clip(growth_df['volume_growth_rate'] / 200 * 50 + 50, 0, 100)
         
-        # Category expansion component
         max_categories = growth_df['category_expansion'].max()
         category_component = np.clip(growth_df['category_expansion'] / max(max_categories, 1) * 100, 0, 100)
         
-        # Market share component (lower share = higher opportunity)
         market_share_component = np.clip((5 - growth_df['market_share'].fillna(0)) / 5 * 100, 0, 100)
         
-        # Combined score (weighted)
+        # score combiunado
         opportunity_score = (
             volume_component * 0.5 +       # Growth rate (50%)
             category_component * 0.3 +     # Category expansion (30%)
@@ -288,14 +283,14 @@ class GeographicPredictor:
         
         regional_data['countries_count'] = self.country_analysis.groupby('region').size()
         
-        # Regional growth calculation
+        # calculo do crescimento regional
         regional_data['regional_growth_rate'] = np.where(
             regional_data['baseline_volume'] > 0,
             ((regional_data['recent_volume'] - regional_data['baseline_volume']) / regional_data['baseline_volume'] * 100),
             999
         ).round(1)
         
-        # Regional classification
+        # classificação regional
         regional_data['regional_status'] = regional_data['regional_growth_rate'].apply(
             lambda x: "EMERGING" if x >= 100 else "GROWING" if x >= 25 else "STABLE" if x >= -10 else "DECLINING"
         )
@@ -311,7 +306,7 @@ class GeographicPredictor:
             Dictionary with expansion opportunities
         """
         
-        # Top opportunities by different criteria
+        # top oportunidsdes
         top_emerging = self.country_analysis[
             self.country_analysis['market_status'] == 'EMERGING'
         ].head(10)
@@ -326,7 +321,7 @@ class GeographicPredictor:
             (self.country_analysis['recent_volume'] > 0)
         ].sort_values('opportunity_score', ascending=False).head(10)
         
-        # Category-specific opportunities
+        # oportunidades por categoria
         category_opportunities = self._find_category_opportunities()
         
         return {
@@ -347,14 +342,11 @@ class GeographicPredictor:
         
         opportunities = {}
         
-        # For each category, find countries with low presence but market potential
-        for category in self.category_country_matrix.index[:20]:  # Top 20 categories
+        for category in self.category_country_matrix.index[:20]: 
             category_data = self.category_country_matrix.loc[category]
             
-            # Countries with this category
             active_countries = category_data[category_data > 0].index.tolist()
             
-            # Countries without this category but with high opportunity scores
             potential_countries = self.country_analysis[
                 ~self.country_analysis.index.isin(active_countries) &
                 (self.country_analysis['opportunity_score'] > 60)
@@ -383,11 +375,9 @@ class GeographicPredictor:
         country_data = self.country_analysis.loc[country]
         base_data = self.country_data.loc[country]
         
-        # Category presence in this country
         country_categories = self.category_country_matrix[country]
         active_categories = country_categories[country_categories > 0].sort_values(ascending=False)
         
-        # Regional context
         region_data = self.regional_analysis.get(country_data['region'], {})
         
         return {
@@ -471,35 +461,28 @@ class GeographicPredictor:
             'avoid_list': []
         }
         
-        # Filter by investment size
         if investment_size == "SMALL":
-            # Focus on smaller, emerging markets
             candidates = self.country_analysis[
                 (self.country_analysis['market_share'] < 0.5) & 
                 (self.country_analysis['opportunity_score'] > 50)
             ]
         elif investment_size == "LARGE":
-            # Focus on established, high-volume markets
             candidates = self.country_analysis[
                 (self.country_analysis['market_share'] > 1.0) | 
                 (self.country_analysis['recent_volume'] > self.country_analysis['recent_volume'].quantile(0.75))
             ]
-        else:  # MEDIUM
-            # Balanced approach
+        else:  
             candidates = self.country_analysis[
                 self.country_analysis['opportunity_score'] > 40
             ]
         
-        # Category-specific filtering
         if category and category in self.category_country_matrix.index:
             category_presence = self.category_country_matrix.loc[category]
             
-            # Countries without this category (greenfield opportunity)
             greenfield = candidates[
                 ~candidates.index.isin(category_presence[category_presence > 0].index)
             ].head(5)
             
-            # Countries with low presence (expansion opportunity)
             expansion = candidates[
                 candidates.index.isin(category_presence[
                     (category_presence > 0) & (category_presence < category_presence.quantile(0.5))
@@ -509,20 +492,17 @@ class GeographicPredictor:
             recommendations['greenfield_opportunities'] = greenfield.index.tolist()
             recommendations['expansion_opportunities'] = expansion.index.tolist()
         
-        # General recommendations
         sorted_candidates = candidates.sort_values('opportunity_score', ascending=False)
         
         recommendations['priority_markets'] = sorted_candidates.head(5).index.tolist()
         recommendations['secondary_markets'] = sorted_candidates.iloc[5:10].index.tolist()
         
-        # Watch list (good potential but some risks)
         watch_candidates = self.country_analysis[
             (self.country_analysis['opportunity_score'] > 30) & 
             (self.country_analysis['market_status'].isin(['STABLE', 'DEVELOPING']))
         ]
         recommendations['watch_list'] = watch_candidates.head(5).index.tolist()
         
-        # Avoid list (declining markets)
         avoid_candidates = self.country_analysis[
             self.country_analysis['market_status'].isin(['DECLINING', 'CONTRACTING'])
         ]
@@ -545,7 +525,7 @@ class GeographicPredictor:
         if not current_countries:
             return {'diversification_score': 0, 'recommendations': []}
         
-        # Current portfolio analysis
+        # analise de portifolio atual
         current_data = self.country_analysis.loc[
             self.country_analysis.index.intersection(current_countries)
         ]
@@ -553,29 +533,26 @@ class GeographicPredictor:
         if current_data.empty:
             return {'diversification_score': 0, 'recommendations': []}
         
-        # Regional diversification
+        # diversificação regional
         current_regions = current_data['region'].value_counts()
         total_regions = self.country_analysis['region'].nunique()
         regional_diversity = len(current_regions) / total_regions * 100
         
-        # Market status diversification
         current_statuses = current_data['market_status'].value_counts()
         total_statuses = self.country_analysis['market_status'].nunique()
         status_diversity = len(current_statuses) / total_statuses * 100
         
-        # Volume concentration (HHI)
+        # concentração de volume
         volume_shares = current_data['recent_volume'] / current_data['recent_volume'].sum()
         hhi = (volume_shares ** 2).sum()
-        concentration_score = (1 - hhi) * 100  # Lower HHI = better diversification
+        concentration_score = (1 - hhi) * 100 
         
-        # Overall diversification score
         diversification_score = (
             regional_diversity * 0.4 +
             status_diversity * 0.3 +
             concentration_score * 0.3
         )
         
-        # Recommendations for improvement
         missing_regions = set(self.country_analysis['region'].unique()) - set(current_regions.index)
         region_recommendations = []
         
@@ -615,11 +592,10 @@ def render_geographic_predictor_interface(df: pd.DataFrame) -> None:
     st.header("Preditor de Expansão Geográfica")
     st.markdown("**Identifique oportunidades de mercado global em 109 países**")
     
-    # Initialize predictor
+    # inicializar predição
     with st.spinner("Analisando padrões de mercado global..."):
         predictor = GeographicPredictor(df)
     
-    # Create tabs for different analyses
     country_tab, regional_tab, expansion_tab, portfolio_tab = st.tabs([
         "Análise por País",
         "Insights Regionais",
@@ -645,7 +621,6 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
     
     st.subheader("🎯 Análise Individual por País")
     
-    # Country selection
     available_countries = list(predictor.country_analysis.index)
     
     if available_countries:
@@ -656,11 +631,9 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
         )
         
         if st.button("🎯 Analisar País", type="primary"):
-            # Get country analysis
             country_data = predictor.get_country_analysis(selected_country)
             
             if country_data:
-                # Display key metrics
                 st.markdown("### 📊 Análise de Mercado do País")
                 
                 col1, col2, col3, col4 = st.columns(4)
@@ -701,7 +674,6 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
                         help="Participação do volume global de créditos de carbono"
                     )
                 
-                # Market interpretation
                 if country_data['market_status'] in ['EMERGING', 'BOOMING']:
                     st.success(f"🟢 **ALTO POTENCIAL**: {selected_country} mostra mercado {country_data['market_status'].lower()} com {country_data['volume_growth_rate']:+.1f}% crescimento.")
                 elif country_data['market_status'] in ['GROWING', 'DEVELOPING']:
@@ -711,7 +683,6 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
                 else:
                     st.error(f"🔴 **CAUTELA**: {selected_country} mostra tendências {country_data['market_status'].lower()}.")
                 
-                # Detailed market information
                 st.markdown("### 📈 Detalhes do Mercado")
                 
                 detail_col1, detail_col2 = st.columns(2)
@@ -734,7 +705,6 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
                     st.write(f"• **Crescimento Regional**: {regional_ctx['regional_growth']:.1f}%")
                     st.write(f"• **Status Regional**: {regional_ctx['regional_status']}")
                 
-                # Top categories in this country
                 if country_data['top_categories']:
                     st.markdown("### 🏷️ Principais Categorias no País")
                     
@@ -745,7 +715,6 @@ def render_country_analysis(predictor: GeographicPredictor) -> None:
                         with col2:
                             st.write(f"{volume:,.0f} tCO₂")
                 
-                # Investment recommendation
                 opportunity_score = country_data['opportunity_score']
                 if opportunity_score >= 80:
                     st.success("🟢 **FORTE RECOMENDAÇÃO**: País de alta oportunidade para expansão imediata.")
@@ -765,11 +734,9 @@ def render_regional_insights(predictor: GeographicPredictor) -> None:
     
     st.subheader("🌎 Insights de Mercado Regional")
     
-    # Get regional insights
     regional_data = predictor.get_regional_insights()
     
     if regional_data:
-        # Regional overview
         st.markdown("### 📊 Visão Geral Regional")
         
         overview_col1, overview_col2, overview_col3, overview_col4 = st.columns(4)
@@ -798,7 +765,6 @@ def render_regional_insights(predictor: GeographicPredictor) -> None:
                 regional_data['leaders']['highest_opportunity_region']
             )
         
-        # Detailed regional analysis
         st.markdown("### 🌍 Análise de Performance Regional")
         
         regional_metrics = []
@@ -816,7 +782,6 @@ def render_regional_insights(predictor: GeographicPredictor) -> None:
         regional_df = pd.DataFrame(regional_metrics)
         st.dataframe(regional_df, use_container_width=True)
         
-        # Regional strategy insights
         st.markdown("### 💡 Insights de Estratégia Regional")
         
         leaders = regional_data['leaders']
@@ -834,7 +799,6 @@ def render_regional_insights(predictor: GeographicPredictor) -> None:
             st.warning(f"🎯 **Maior Oportunidade**: {leaders['highest_opportunity_region'].replace('_', ' ').title()}")
             st.write("Melhor combinação de fatores de crescimento e oportunidade")
             
-            # Regional diversification advice
             high_opportunity_regions = [
                 region for region, data in regional_data['regional_data'].items()
                 if data['avg_opportunity_score'] > 50
@@ -844,7 +808,6 @@ def render_regional_insights(predictor: GeographicPredictor) -> None:
             st.write(f"• Foque em {len(high_opportunity_regions)} regiões de alta oportunidade")
             st.write(f"• Balance mercados estabelecidos com oportunidades emergentes")
         
-        # Regional growth comparison
         st.markdown("### 📈 Comparação de Crescimento Regional")
         
         growth_insights = []
@@ -873,7 +836,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
     
     st.subheader("🚀 Oportunidades de Expansão de Mercado")
     
-    # Expansion criteria
     expansion_col1, expansion_col2 = st.columns(2)
     
     with expansion_col1:
@@ -885,7 +847,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
         )
     
     with expansion_col2:
-        # Get available categories
         available_categories = list(predictor.category_country_matrix.index)
         category_filter = st.selectbox(
             "🏷️ Foco em Categoria (Opcional)",
@@ -897,13 +858,11 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
             category_filter = None
     
     if st.button("🚀 Gerar Plano de Expansão", type="primary"):
-        # Get expansion recommendations
         recommendations = predictor.get_expansion_recommendations(category_filter, investment_size)
         
         if recommendations:
             st.markdown("### 🎯 Recomendações de Expansão")
             
-            # Priority markets
             if recommendations['priority_markets']:
                 st.success("🟢 **MERCADOS PRIORITÁRIOS** (Foco Imediato)")
                 for i, country in enumerate(recommendations['priority_markets'], 1):
@@ -911,7 +870,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
                     if country_data:
                         st.write(f"**{i}. {country}** - Mercado {country_data['market_status']} ({country_data['opportunity_score']:.1f}/100)")
             
-            # Secondary markets
             if recommendations['secondary_markets']:
                 st.info("🟡 **MERCADOS SECUNDÁRIOS** (Alvos de Médio Prazo)")
                 for i, country in enumerate(recommendations['secondary_markets'], 1):
@@ -919,7 +877,7 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
                     if country_data:
                         st.write(f"**{i}. {country}** - Mercado {country_data['market_status']} ({country_data['opportunity_score']:.1f}/100)")
             
-            # Category-specific opportunities
+            # oportunidades por categoria especifica
             if category_filter and 'greenfield_opportunities' in recommendations:
                 st.markdown("### 🆕 Oportunidades Específicas por Categoria")
                 
@@ -935,7 +893,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
                     for country in recommendations['expansion_opportunities']:
                         st.write(f"• **{country}**")
             
-            # Watch list
             if recommendations['watch_list']:
                 st.warning("🟠 **LISTA DE OBSERVAÇÃO** (Monitorar para o Futuro)")
                 for country in recommendations['watch_list']:
@@ -943,7 +900,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
                     if country_data:
                         st.write(f"• **{country}** - {country_data['market_status']} ({country_data['opportunity_score']:.1f}/100)")
             
-            # Avoid list
             if recommendations['avoid_list']:
                 st.error("🔴 **LISTA DE EVITAR** (Mercados de Alto Risco)")
                 for country in recommendations['avoid_list']:
@@ -951,7 +907,6 @@ def render_expansion_opportunities(predictor: GeographicPredictor) -> None:
                     if country_data:
                         st.write(f"• **{country}** - Mercado {country_data['market_status']}")
             
-            # Investment size specific advice
             st.markdown("### 💡 Conselho de Estratégia de Investimento")
             
             if investment_size == "SMALL":
@@ -970,7 +925,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
     
     st.subheader("📊 Diversificação de Portfolio Geográfico")
     
-    # Current portfolio input
     st.markdown("### 🗂️ Análise de Portfolio Atual")
     
     available_countries = list(predictor.country_analysis.index)
@@ -983,13 +937,12 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
     
     if len(current_portfolio) >= 2:
         if st.button("📊 Analisar Diversificação", type="primary"):
-            # Calculate diversification score
+            # calcular score de diversificação
             diversification = predictor.calculate_diversification_score(current_portfolio)
             
             if diversification and diversification['diversification_score'] > 0:
                 st.markdown("### 📊 Resultados da Análise de Diversificação")
                 
-                # Main metrics
                 div_col1, div_col2, div_col3, div_col4 = st.columns(4)
                 
                 with div_col1:
@@ -1018,7 +971,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
                         diversification['portfolio_countries']
                     )
                 
-                # Diversification interpretation
                 score = diversification['diversification_score']
                 if score >= 70:
                     st.success("🟢 **EXCELENTE DIVERSIFICAÇÃO**: Seu portfolio tem forte diversificação geográfica.")
@@ -1029,7 +981,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
                 else:
                     st.error("🔴 **BAIXA DIVERSIFICAÇÃO**: Alto risco de concentração - diversificação fortemente recomendada.")
                 
-                # Current portfolio breakdown
                 st.markdown("### 🗂️ Composição do Portfolio")
                 
                 breakdown_col1, breakdown_col2 = st.columns(2)
@@ -1045,7 +996,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
                     st.write(f"• **Regiões Ausentes**: {diversification['missing_regions']}")
                     st.write(f"• **Cobertura Regional**: {len(diversification['current_regions'])} regiões")
                 
-                # Improvement recommendations
                 if diversification['region_recommendations']:
                     st.markdown("### 💡 Recomendações de Diversificação")
                     
@@ -1053,7 +1003,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
                     for rec in diversification['region_recommendations']:
                         st.write(f"• **{rec['region'].replace('_', ' ').title()}**: {rec['top_country']} (Pontuação: {rec['opportunity_score']:.1f})")
                 
-                # Portfolio optimization suggestions
                 st.markdown("### 🔧 Otimização de Portfolio")
                 
                 optimization_suggestions = [
@@ -1075,7 +1024,6 @@ def render_portfolio_diversification(predictor: GeographicPredictor) -> None:
     else:
         st.info("📝 Selecione países de seu portfolio atual para analisar a diversificação geográfica.")
         
-        # Show diversification benefits
         st.markdown("### 💡 Benefícios da Diversificação Geográfica")
         
         benefits = [
