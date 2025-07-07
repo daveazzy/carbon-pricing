@@ -24,10 +24,10 @@ def main():
     the professional interface with header navigation.
     """
     
-    # Setup page configuration
+    # configuraçao
     setup_page_config()
     
-    # Load data first
+    # carregar dadps
     with st.spinner('Carregando dados de créditos de carbono...'):
         df = carregar_e_preparar_dados()
 
@@ -35,21 +35,21 @@ def main():
         display_error_message("Falha ao carregar dados. Verifique os arquivos de dados e tente novamente.")
         return
     
-    # Create professional header with navigation
+    # header
     create_professional_header(df)
     
-    # Handle navigation
+    # navegaçao
     handle_navigation(df)
 
 
 def create_professional_header(df):
     """Create a professional header with logo, title, and main navigation."""
     
-    # Load custom CSS for the new layout
+    # carregar css
     from modules.ui.styles import load_custom_css
     load_custom_css()
     
-    # Professional header container
+    # header container
     st.markdown("""
     <div class="professional-header">
         <div class="header-content">
@@ -88,24 +88,21 @@ def create_professional_header(df):
         len(df['project_country'].unique())
     ), unsafe_allow_html=True)
     
-    # Navigation menu
+    # menu de navegaçao
     create_navigation_menu()
 
 
 def create_navigation_menu():
     """Create the main navigation menu."""
     
-    # Initialize session state for navigation
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 'Visão Geral'
     
-    # Navigation container
     st.markdown("""
     <div class="navigation-container">
         <div class="nav-content">
     """, unsafe_allow_html=True)
     
-    # Navigation buttons in columns
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
@@ -135,7 +132,6 @@ def create_navigation_menu():
     
     st.markdown("</div></div>", unsafe_allow_html=True)
     
-    # Add spacing after navigation
     st.markdown("<div class='nav-spacer'></div>", unsafe_allow_html=True)
 
 
@@ -144,7 +140,7 @@ def handle_navigation(df):
     
     current_page = st.session_state.current_page
     
-    # Create main content container
+    # container do conteudo da pagina
     st.markdown('<div class="main-content">', unsafe_allow_html=True)
     
     if current_page == 'Visão Geral':
@@ -167,8 +163,7 @@ def handle_navigation(df):
 
 def render_overview_page(df):
     """Render the overview page with improved layout."""
-    
-    # Page header
+
     st.markdown("""
     <div class="page-header">
         <h2 class="page-title">Visão Geral do Mercado</h2>
@@ -176,14 +171,12 @@ def render_overview_page(df):
     </div>
     """, unsafe_allow_html=True)
     
-    # Content sections
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        # Main analysis content
         st.markdown('<div class="content-section">', unsafe_allow_html=True)
         
-        # Optional filters in a clean expandable section
+        # filtros opicionais
         with st.expander("🔧 Opções de Filtro", expanded=False):
             filter_col1, filter_col2, filter_col3 = st.columns(3)
             
@@ -215,21 +208,17 @@ def render_overview_page(df):
                     help="Defina o período para análise temporal"
                 )
         
-        # Apply filters
         df_filtered = apply_filters(df, selected_categories, selected_countries, year_range)
         
-        # Show filter impact
         if len(df_filtered) != len(df):
             reduction = ((len(df) - len(df_filtered)) / len(df)) * 100
             st.info(f"📊 Filtros aplicados: **{len(df_filtered):,}** transações selecionadas ({100-reduction:.1f}% do total)")
         
-        # Render main analysis
         render_comparative_overview_tab(df_filtered)
         
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col2:
-        # Sidebar with key insights
         render_insights_sidebar(df_filtered if 'df_filtered' in locals() else df)
 
 
@@ -240,7 +229,7 @@ def render_insights_sidebar(df):
     
     st.markdown("### 📈 Insights Rápidos")
     
-    # Top category
+    # Top categoria
     top_category = df.groupby('project_category')['credits_quantity'].sum().idxmax()
     top_volume = df.groupby('project_category')['credits_quantity'].sum().max()
     
@@ -250,7 +239,7 @@ def render_insights_sidebar(df):
     *{top_volume:,.0f} tCO₂*
     """)
     
-    # Top country
+    # Top país
     top_country = df.groupby('project_country')['credits_quantity'].sum().idxmax()
     country_volume = df.groupby('project_country')['credits_quantity'].sum().max()
     
@@ -260,7 +249,7 @@ def render_insights_sidebar(df):
     *{country_volume:,.0f} tCO₂*
     """)
     
-    # Time span
+    # span de anos
     years_span = int(df['credit_vintage_year'].max() - df['credit_vintage_year'].min())
     st.markdown(f"""
     **📅 Período Analisado:**  
@@ -268,7 +257,7 @@ def render_insights_sidebar(df):
     *({int(df['credit_vintage_year'].min())} - {int(df['credit_vintage_year'].max())})*
     """)
     
-    # Average transaction size
+    # tamanho medio de transação
     avg_transaction = df['credits_quantity'].mean()
     st.markdown(f"""
     **💼 Transação Média:**  
@@ -291,7 +280,7 @@ def apply_filters(df, categories, countries, year_range):
     df_filtered = df_filtered[df_filtered['credit_vintage_year'].between(year_range[0], year_range[1])]
     
     if df_filtered.empty:
-        return df  # Return original data if filters result in empty dataset
+        return df
     
     return df_filtered
 
@@ -306,7 +295,6 @@ def render_distribution_page(df):
     </div>
     """, unsafe_allow_html=True)
     
-    # Analysis scope selector
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -319,10 +307,8 @@ def render_distribution_page(df):
             help="Escolha o escopo para análise de distribuição"
         )
     
-    # Apply scope
     df_analysis, selected_categories = apply_analysis_scope(df, analysis_scope)
     
-    # Render analysis
     st.markdown('<div class="content-section">', unsafe_allow_html=True)
     render_distribution_analysis_tab(df_analysis, selected_categories)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -349,7 +335,6 @@ def apply_analysis_scope(df, scope):
             df_analysis = df[df['project_category'].isin(selected_categories)]
             return df_analysis, selected_categories
     
-    # Default: complete data
     return df, []
 
 
@@ -365,7 +350,6 @@ def render_statistical_page(df):
     
     st.markdown('<div class="content-section">', unsafe_allow_html=True)
     
-    # Analysis type selector
     analysis_type = st.selectbox(
         "Tipo de Análise Estatística",
         ["Comparação de Categorias (Mann-Whitney U)", "Associação País-Categoria (Qui-Quadrado)", "Modelo Preditivo (Regressão)"],
@@ -418,7 +402,6 @@ def render_category_comparison_analysis(df):
     st.markdown("#### Teste Mann-Whitney U: Comparação de Distribuições")
     st.markdown("Compare as distribuições de volume entre duas categorias de projeto.")
     
-    # Category selection in columns
     col1, col2, col3 = st.columns([1, 1, 1])
     
     all_categories = sorted(df['project_category'].dropna().unique())
@@ -437,14 +420,12 @@ def render_category_comparison_analysis(df):
                 stat, p_value = realizar_teste_mann_whitney(df, cat1, cat2)
                 
                 if p_value is not None:
-                    # Results display
                     result_col1, result_col2 = st.columns(2)
                     with result_col1:
                         st.metric("Estatística U", f"{stat:,.0f}")
                     with result_col2:
                         st.metric("Valor P", f"{p_value:.6f}")
                     
-                    # Interpretation
                     if p_value < 0.05:
                         st.success("✅ **Diferença Estatisticamente Significativa** (p < 0,05)")
                         st.markdown("As distribuições das duas categorias são significativamente diferentes.")
@@ -461,7 +442,6 @@ def render_association_analysis(df):
     st.markdown("#### Teste Qui-Quadrado: Associação País vs Categoria")
     st.markdown("Analise se existe associação estatística entre país de origem e categoria de projeto.")
     
-    # Create and display contingency table
     tabela_contingencia = calcular_tabela_contingencia(df)
     
     if not tabela_contingencia.empty:
@@ -473,14 +453,12 @@ def render_association_analysis(df):
                 chi2_result, p_value = realizar_teste_qui_quadrado(tabela_contingencia)
                 
                 if p_value is not None:
-                    # Results
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("Estatística χ²", f"{chi2_result:.2f}")
                     with col2:
                         st.metric("Valor P", f"{p_value:.6f}")
                     
-                    # Interpretation
                     if p_value is not None and p_value < 0.05:
                         st.success("✅ **Associação Estatisticamente Significativa**")
                         st.markdown("Existe relação significativa entre país de origem e categoria de projeto.")
@@ -514,7 +492,7 @@ def render_regression_analysis(df):
     with col1:
         st.markdown("O modelo analisa como diferentes variáveis impactam o volume de transações.")
     
-    # Display results if model was trained
+    # renderiza os resultados se o modelo foi rodado
     if 'modelo' in locals() and modelo:
         st.markdown("#### 📊 Resultados do Modelo")
         st.code(str(modelo.summary()), language='text')
@@ -523,7 +501,7 @@ def render_regression_analysis(df):
 def render_market_intelligence_tab(df):
     """Render the Market Intelligence tab with market insights."""
     
-    # Market Intelligence Sub-sections
+    # inteligencia de mercado
     intel_section = st.selectbox(
         "Seção de Inteligência",
         ["Análise de Mercado", "Dashboard Executivo", "Insights Estratégicos"],
@@ -543,13 +521,11 @@ def _render_market_analysis(df):
     
     st.markdown("#### Análise Abrangente de Mercado")
     
-    # Category Performance Analysis
     st.markdown("##### Performance por Categoria")
     
     category_analysis = calcular_analise_enriquecida_por_categoria(df)
     
     if not category_analysis.empty:
-        # Show top 10 in a clean format
         top_10_categories = category_analysis.head(10)
         
         for i, (category, data) in enumerate(top_10_categories.iterrows(), 1):
@@ -568,7 +544,6 @@ def _render_market_analysis(df):
             with col4:
                 st.metric("Volume Mediano", f"{data['median_transaction_volume']:,.0f} tCO₂")
     
-    # Geographic Analysis
     st.markdown("##### Análise Geográfica")
     
     col1, col2 = st.columns(2)
@@ -594,7 +569,6 @@ def _render_executive_dashboard(df):
     
     st.markdown("#### Dashboard Executivo")
     
-    # Key Findings in two columns
     col1, col2 = st.columns(2)
     
     total_volume = df['credits_quantity'].sum()
@@ -619,7 +593,6 @@ def _render_strategic_insights(df):
     
     st.markdown("#### Insights Estratégicos")
     
-    # Temporal Analysis
     monthly_volumes = df.groupby(df['transaction_date'].dt.month)['credits_quantity'].sum()
     peak_month = int(monthly_volumes.idxmax())
     lowest_month = int(monthly_volumes.idxmin())
@@ -633,7 +606,6 @@ def _render_strategic_insights(df):
     with col2:
         st.metric("Menor Atividade", f"{month_names[lowest_month]} ({monthly_volumes[lowest_month]:,.0f} tCO₂)")
     
-    # Key insights
     st.markdown("**Principais Insights Estratégicos:**")
     
     insights = [
