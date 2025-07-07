@@ -1,4 +1,4 @@
-"""
+nir """
 Trend Analyzer for Carbon Credits Market
 
 This module analyzes growth and decline trends for carbon credit categories based on 
@@ -58,25 +58,24 @@ class TrendAnalyzer:
         to identify growth and decline patterns.
         """
         
-        # Define time periods for comparison
-        recent_cutoff = pd.Timestamp(self.current_year - 3, 1, 1, tz='UTC')  # Last 3 years
-        baseline_cutoff = pd.Timestamp(self.current_year - 6, 1, 1, tz='UTC')  # 3-6 years ago baseline
+        # definir periodo de comparação
+        recent_cutoff = pd.Timestamp(self.current_year - 3, 1, 1, tz='UTC')  
+        baseline_cutoff = pd.Timestamp(self.current_year - 6, 1, 1, tz='UTC')  
         
-        # Filter data for analysis periods
+        # filtrar analise por periodo
         recent_data = self.df[self.df['transaction_date'] >= recent_cutoff]
         baseline_data = self.df[
             (self.df['transaction_date'] >= baseline_cutoff) & 
             (self.df['transaction_date'] < recent_cutoff)
         ]
         
-        # Calculate metrics by category for each period
+        # calcular metricas para cad periodo
         recent_metrics = self._calculate_period_metrics(recent_data, "recent")
         baseline_metrics = self._calculate_period_metrics(baseline_data, "baseline")
         
-        # Merge and calculate trends
+        # merge dos calculos 
         trend_analysis = self._calculate_trend_metrics(recent_metrics, baseline_metrics)
         
-        # Calculate momentum scores
         momentum_analysis = self._calculate_momentum_scores(trend_analysis)
         
         self.trend_results = trend_analysis
@@ -98,13 +97,12 @@ class TrendAnalyzer:
         if period_data.empty:
             return pd.DataFrame()
         
-        # Group by category and calculate metrics
         metrics = period_data.groupby('project_category').agg({
             'credits_quantity': ['sum', 'count', 'mean'],
             'transaction_date': ['min', 'max']
         }).round(2)
         
-        # Flatten column names
+        # achatar nomes das colunas
         metrics.columns = [f'{col[1]}_{col[0]}' if col[1] else col[0] for col in metrics.columns]
         metrics = metrics.rename(columns={
             'sum_credits_quantity': f'total_volume_{period_name}',
@@ -114,13 +112,12 @@ class TrendAnalyzer:
             'max_transaction_date': f'end_date_{period_name}'
         })
         
-        # Calculate period duration in years
+        # calcular duração em anos
         if not metrics.empty:
             metrics[f'period_years_{period_name}'] = (
                 metrics[f'end_date_{period_name}'] - metrics[f'start_date_{period_name}']
             ).dt.days / 365.25
             
-            # Annualized metrics
             metrics[f'annual_volume_{period_name}'] = (
                 metrics[f'total_volume_{period_name}'] / 
                 metrics[f'period_years_{period_name}'].clip(lower=0.1)
@@ -150,23 +147,21 @@ class TrendAnalyzer:
         if recent_metrics.empty or baseline_metrics.empty:
             return pd.DataFrame()
         
-        # Find categories present in both periods
         common_categories = recent_metrics.index.intersection(baseline_metrics.index)
         
         if len(common_categories) == 0:
             return pd.DataFrame()
         
-        # Create trend analysis dataframe
+        # criar dataframe de analise de trend
         trend_df = pd.DataFrame(index=common_categories)
         
-        # Copy recent and baseline metrics
         for col in recent_metrics.columns:
             trend_df[col] = recent_metrics.loc[common_categories, col]
         
         for col in baseline_metrics.columns:
             trend_df[col] = baseline_metrics.loc[common_categories, col]
         
-        # Calculate growth rates
+        # calcular crescimento dos indices de trend
         trend_df['volume_growth_rate'] = (
             (trend_df['annual_volume_recent'] - trend_df['annual_volume_baseline']) / 
             trend_df['annual_volume_baseline'].clip(lower=1) * 100
@@ -177,11 +172,9 @@ class TrendAnalyzer:
             trend_df['annual_transactions_baseline'].clip(lower=0.1) * 100
         ).round(1)
         
-        # Classify trends
         trend_df['volume_trend'] = trend_df['volume_growth_rate'].apply(self._classify_trend)
         trend_df['transaction_trend'] = trend_df['transaction_growth_rate'].apply(self._classify_trend)
         
-        # Overall trend classification (weighted by volume)
         trend_df['overall_trend'] = trend_df.apply(
             lambda row: self._classify_overall_trend(
                 row['volume_growth_rate'], 
@@ -189,10 +182,8 @@ class TrendAnalyzer:
             ), axis=1
         )
         
-        # Calculate trend strength
         trend_df['trend_strength'] = np.abs(trend_df['volume_growth_rate']).clip(upper=200)
         
-        # Market share change
         total_recent_volume = trend_df['total_volume_recent'].sum()
         total_baseline_volume = trend_df['total_volume_baseline'].sum()
         
@@ -208,7 +199,6 @@ class TrendAnalyzer:
             trend_df['market_share_recent'] - trend_df['market_share_baseline']
         ).round(2)
         
-        # Sort by volume growth rate descending
         trend_df = trend_df.sort_values('volume_growth_rate', ascending=False)
         
         return trend_df
