@@ -1,11 +1,10 @@
-# src/modules/data_loader.py (Corrigido)
 import pandas as pd
 import streamlit as st
 
 @st.cache_data
 def carregar_e_preparar_dados():
     try:
-        # Adicionado low_memory=False para silenciar o DtypeWarning
+        # low_memory=False para silenciar o DtypeWarning
         credits_df = pd.read_csv('data/credits.csv', low_memory=False)
         projects_df = pd.read_csv('data/projects.csv', low_memory=False)
     except FileNotFoundError:
