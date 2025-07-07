@@ -1,5 +1,3 @@
-# src/modules/analysis/modeling.py
-
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -20,17 +18,17 @@ def treinar_modelo_regressao(df):
         return None
 
     # 1. Preparar os dados para o modelo
-    # Para um modelo robusto, vamos usar as 5 categorias com maior volume
+    # 5 categorias com o maior volume
     top_5_categories = df.groupby('project_category')['credits_quantity'].sum().nlargest(5).index
     model_df = df[df['project_category'].isin(top_5_categories)].copy()
 
-    # Aplicar a transformação logarítmica para lidar com a assimetria
+    # aplicar a transformação logarítmica para lidar com a assimetria
     model_df['log_credits_quantity'] = np.log1p(model_df['credits_quantity'])
     
-    # Substituir valores infinitos (caso a transformação log gere algum) por NaN
+    # substituir valores infinitos (caso a transformação log gere algum) por NaN
     model_df.replace([np.inf, -np.inf], np.nan, inplace=True)
     
-    # Remover linhas com dados faltantes nas colunas essenciais para o modelo
+    # remover linhas com dados faltantes nas colunas essenciais para o modelo
     model_df.dropna(subset=['log_credits_quantity', 'credit_age_at_transaction', 'project_category'], inplace=True)
 
     if model_df.empty:
@@ -40,11 +38,11 @@ def treinar_modelo_regressao(df):
     Y = model_df['log_credits_quantity']
     X = model_df[['credit_age_at_transaction', 'project_category']]
 
-    # Converter a variável categórica 'project_category' em variáveis dummy
-    # O dtype=float é importante para evitar erros de tipo no statsmodels
+    # converter a variável categórica 'project_category' em variáveis dummy
+    # dtype=float é importante para evitar erros de tipo no statsmodels
     X = pd.get_dummies(X, columns=['project_category'], drop_first=True, dtype=float)
 
-    # Adicionar uma constante (o intercepto) ao modelo
+    # adicionar uma constante (o intercepto) ao modelo
     X = sm.add_constant(X)
 
     # 3. Construir e treinar o modelo
@@ -84,13 +82,11 @@ def render_modeling_tab(df: pd.DataFrame):
             st.error("Unable to train model. Insufficient data or data quality issues.")
             return
         
-        # Model Summary
         col1, col2 = st.columns([2, 1])
         
         with col1:
             st.markdown("### 📋 Model Summary")
             
-            # Key metrics
             summary_data = {
                 'Metric': ['R-squared', 'Adjusted R-squared', 'F-statistic', 'P-value (F-stat)', 'AIC', 'BIC'],
                 'Value': [
@@ -105,7 +101,6 @@ def render_modeling_tab(df: pd.DataFrame):
             
             st.dataframe(pd.DataFrame(summary_data), hide_index=True)
             
-            # Interpretation
             r2 = model.rsquared
             if r2 > 0.7:
                 interpretation = "🟢 **Strong model** - Explains most variance in transaction volumes"
@@ -119,7 +114,6 @@ def render_modeling_tab(df: pd.DataFrame):
         with col2:
             st.markdown("### 🎯 Model Performance")
             
-            # Performance gauge
             performance_score = int(model.rsquared * 100)
             
             fig_gauge = go.Figure(go.Indicator(
@@ -143,10 +137,10 @@ def render_modeling_tab(df: pd.DataFrame):
             fig_gauge.update_layout(height=300)
             st.plotly_chart(fig_gauge, use_container_width=True)
         
-        # Coefficients Analysis
+        # coeficientes da analise
         st.markdown("### 🔢 Regression Coefficients")
         
-        # Extract coefficient information
+        # extrair coeficientes
         coef_data = []
         for var, coef in model.params.items():
             p_value = model.pvalues[var]
@@ -168,10 +162,8 @@ def render_modeling_tab(df: pd.DataFrame):
         
         st.caption("Significance: *** p<0.001, ** p<0.01, * p<0.05")
         
-        # Coefficient visualization
         st.markdown("### 📊 Coefficient Plot")
         
-        # Create coefficient plot
         variables = [var for var in model.params.index if var != 'const']
         coefficients = [model.params[var] for var in variables]
         conf_intervals = [model.conf_int().loc[var] for var in variables]
@@ -232,7 +224,6 @@ def render_modeling_tab(df: pd.DataFrame):
                 template='plotly_white'
             )
             
-            # Add horizontal line at y=0
             fig_resid.add_hline(y=0, line_dash="dash", line_color="red")
             
             st.plotly_chart(fig_resid, use_container_width=True)
@@ -240,7 +231,7 @@ def render_modeling_tab(df: pd.DataFrame):
         with col2:
             st.markdown("### 📊 Q-Q Plot")
             
-            # Calculate theoretical quantiles for normal distribution
+            # calcular quantiles teoricos
             from scipy import stats
             theoretical_quantiles = stats.probplot(residuals, dist="norm")[0][0]
             sample_quantiles = stats.probplot(residuals, dist="norm")[0][1]
@@ -253,7 +244,6 @@ def render_modeling_tab(df: pd.DataFrame):
                 template='plotly_white'
             )
             
-            # Add diagonal line
             min_val = min(theoretical_quantiles.min(), sample_quantiles.min())
             max_val = max(theoretical_quantiles.max(), sample_quantiles.max())
             fig_qq.add_trace(go.Scatter(
@@ -266,7 +256,6 @@ def render_modeling_tab(df: pd.DataFrame):
             
             st.plotly_chart(fig_qq, use_container_width=True)
         
-        # Statistical Tests
         st.markdown("### 🧪 Statistical Tests")
         
         test_col1, test_col2 = st.columns(2)
@@ -306,7 +295,6 @@ def render_modeling_tab(df: pd.DataFrame):
             except Exception as e:
                 st.info("Heteroscedasticity test not available")
         
-        # Model Summary Text
         st.markdown("### 📝 Detailed Model Summary")
         with st.expander("Show Full Statistical Summary"):
             st.text(str(model.summary()))
@@ -321,14 +309,13 @@ def render_modeling_tab(df: pd.DataFrame):
         st.markdown("### 🔮 Interactive Prediction Tool")
         st.markdown("Estimate log-transaction volume based on model inputs:")
         
-        # Get available categories from the model
         available_categories = []
         for col in model.model.exog_names:
             if col.startswith('project_category_'):
                 category_name = col.replace('project_category_', '')
                 available_categories.append(category_name)
         
-        # Prediction interface
+        # interface do modelo
         pred_col1, pred_col2 = st.columns(2)
         
         with pred_col1:
@@ -353,26 +340,26 @@ def render_modeling_tab(df: pd.DataFrame):
         
         if st.button("🔍 Calculate Prediction", type="primary"):
             try:
-                # Prepare prediction data
+                # preparar dados para modelo
                 pred_data = {'const': 1, 'credit_age_at_transaction': age_input}
                 
-                # Set all category dummies to 0
+                # todas as categorias começam com 0 (dummies)
                 for col in model.model.exog_names:
                     if col.startswith('project_category_'):
                         pred_data[col] = 0
                 
-                # Set selected category to 1
+                # categoria selecionada agora é 1
                 if category_input:
                     selected_col = f'project_category_{category_input}'
                     if selected_col in pred_data:
                         pred_data[selected_col] = 1
                 
-                # Make prediction
+                # predict
                 pred_input = pd.Series(pred_data)[model.model.exog_names]
                 log_prediction = model.predict(pred_input)[0]
-                prediction = np.expm1(log_prediction)  # Transform back from log
+                prediction = np.expm1(log_prediction) 
                 
-                # Display results
+                # renderizar resultados
                 result_col1, result_col2 = st.columns(2)
                 
                 with result_col1:
@@ -389,7 +376,7 @@ def render_modeling_tab(df: pd.DataFrame):
                         help="Raw model output (log-transformed)"
                     )
                 
-                # Confidence interval (approximate)
+                # intervalo de confiança
                 prediction_se = np.sqrt(model.mse_resid)
                 ci_lower = np.expm1(log_prediction - 1.96 * prediction_se)
                 ci_upper = np.expm1(log_prediction + 1.96 * prediction_se)
@@ -399,10 +386,10 @@ def render_modeling_tab(df: pd.DataFrame):
             except Exception as e:
                 st.error(f"Prediction failed: {str(e)}")
         
-        # Variable Importance
+        # variavel de importancia
         st.markdown("### 📊 Variable Importance")
         
-        # Calculate standardized coefficients for importance
+        # calcular coeficientes padronizados para importancia
         if len(model.params) > 1:
             importance_data = []
             for var in model.params.index:
@@ -432,7 +419,6 @@ def render_modeling_tab(df: pd.DataFrame):
                 fig_importance.update_layout(height=400)
                 st.plotly_chart(fig_importance, use_container_width=True)
         
-        # Model Interpretation
         st.markdown("### 💡 Model Interpretation")
         
         interpretation_text = f"""
