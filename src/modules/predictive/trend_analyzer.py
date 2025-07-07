@@ -28,8 +28,20 @@ warnings.filterwarnings('ignore')
 
 
 class TrendAnalyzer:
+    """
+    Analyzes growth and decline trends for carbon credit categories.
+    
+    This analyzer compares recent performance (last 3 years) with historical
+    baselines to identify categories with strong growth momentum or declining trends.
+    """
     
     def __init__(self, df: pd.DataFrame):
+        """
+        Initialize the analyzer with historical transaction data.
+        
+        Args:
+            df: DataFrame containing historical carbon credit transactions
+        """
         self.df = df.copy()
         self.df['transaction_date'] = pd.to_datetime(self.df['transaction_date'])
         self.current_year = datetime.now().year
@@ -39,21 +51,32 @@ class TrendAnalyzer:
     
     
     def _analyze_trends(self) -> None:
+        """
+        Analyze trends for all categories with sufficient data.
         
-        recent_cutoff = pd.Timestamp(self.current_year - 3, 1, 1, tz='UTC')
-        baseline_cutoff = pd.Timestamp(self.current_year - 6, 1, 1, tz='UTC')
+        Compares recent 3-year performance against historical baseline
+        to identify growth and decline patterns.
+        """
         
+        # Define time periods for comparison
+        recent_cutoff = pd.Timestamp(self.current_year - 3, 1, 1, tz='UTC')  # Last 3 years
+        baseline_cutoff = pd.Timestamp(self.current_year - 6, 1, 1, tz='UTC')  # 3-6 years ago baseline
+        
+        # Filter data for analysis periods
         recent_data = self.df[self.df['transaction_date'] >= recent_cutoff]
         baseline_data = self.df[
             (self.df['transaction_date'] >= baseline_cutoff) & 
             (self.df['transaction_date'] < recent_cutoff)
         ]
         
+        # Calculate metrics by category for each period
         recent_metrics = self._calculate_period_metrics(recent_data, "recent")
         baseline_metrics = self._calculate_period_metrics(baseline_data, "baseline")
         
+        # Merge and calculate trends
         trend_analysis = self._calculate_trend_metrics(recent_metrics, baseline_metrics)
         
+        # Calculate momentum scores
         momentum_analysis = self._calculate_momentum_scores(trend_analysis)
         
         self.trend_results = trend_analysis
@@ -61,15 +84,27 @@ class TrendAnalyzer:
     
     
     def _calculate_period_metrics(self, period_data: pd.DataFrame, period_name: str) -> pd.DataFrame:
+        """
+        Calculate metrics for a specific time period.
+        
+        Args:
+            period_data: DataFrame for the specific period
+            period_name: Name identifier for the period
+            
+        Returns:
+            DataFrame with period metrics by category
+        """
         
         if period_data.empty:
             return pd.DataFrame()
         
+        # Group by category and calculate metrics
         metrics = period_data.groupby('project_category').agg({
             'credits_quantity': ['sum', 'count', 'mean'],
             'transaction_date': ['min', 'max']
         }).round(2)
         
+        # Flatten column names
         metrics.columns = [f'{col[1]}_{col[0]}' if col[1] else col[0] for col in metrics.columns]
         metrics = metrics.rename(columns={
             'sum_credits_quantity': f'total_volume_{period_name}',
@@ -79,11 +114,13 @@ class TrendAnalyzer:
             'max_transaction_date': f'end_date_{period_name}'
         })
         
+        # Calculate period duration in years
         if not metrics.empty:
             metrics[f'period_years_{period_name}'] = (
                 metrics[f'end_date_{period_name}'] - metrics[f'start_date_{period_name}']
             ).dt.days / 365.25
             
+            # Annualized metrics
             metrics[f'annual_volume_{period_name}'] = (
                 metrics[f'total_volume_{period_name}'] / 
                 metrics[f'period_years_{period_name}'].clip(lower=0.1)
@@ -99,23 +136,37 @@ class TrendAnalyzer:
     
     def _calculate_trend_metrics(self, recent_metrics: pd.DataFrame, 
                                 baseline_metrics: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate trend metrics by comparing recent vs baseline periods.
+        
+        Args:
+            recent_metrics: Metrics for recent period
+            baseline_metrics: Metrics for baseline period
+            
+        Returns:
+            DataFrame with trend analysis results
+        """
         
         if recent_metrics.empty or baseline_metrics.empty:
             return pd.DataFrame()
         
+        # Find categories present in both periods
         common_categories = recent_metrics.index.intersection(baseline_metrics.index)
         
         if len(common_categories) == 0:
             return pd.DataFrame()
         
+        # Create trend analysis dataframe
         trend_df = pd.DataFrame(index=common_categories)
         
+        # Copy recent and baseline metrics
         for col in recent_metrics.columns:
             trend_df[col] = recent_metrics.loc[common_categories, col]
         
         for col in baseline_metrics.columns:
             trend_df[col] = baseline_metrics.loc[common_categories, col]
         
+        # Calculate growth rates
         trend_df['volume_growth_rate'] = (
             (trend_df['annual_volume_recent'] - trend_df['annual_volume_baseline']) / 
             trend_df['annual_volume_baseline'].clip(lower=1) * 100
@@ -126,9 +177,11 @@ class TrendAnalyzer:
             trend_df['annual_transactions_baseline'].clip(lower=0.1) * 100
         ).round(1)
         
+        # Classify trends
         trend_df['volume_trend'] = trend_df['volume_growth_rate'].apply(self._classify_trend)
         trend_df['transaction_trend'] = trend_df['transaction_growth_rate'].apply(self._classify_trend)
         
+        # Overall trend classification (weighted by volume)
         trend_df['overall_trend'] = trend_df.apply(
             lambda row: self._classify_overall_trend(
                 row['volume_growth_rate'], 
@@ -136,8 +189,10 @@ class TrendAnalyzer:
             ), axis=1
         )
         
+        # Calculate trend strength
         trend_df['trend_strength'] = np.abs(trend_df['volume_growth_rate']).clip(upper=200)
         
+        # Market share change
         total_recent_volume = trend_df['total_volume_recent'].sum()
         total_baseline_volume = trend_df['total_volume_baseline'].sum()
         
@@ -153,12 +208,22 @@ class TrendAnalyzer:
             trend_df['market_share_recent'] - trend_df['market_share_baseline']
         ).round(2)
         
+        # Sort by volume growth rate descending
         trend_df = trend_df.sort_values('volume_growth_rate', ascending=False)
         
         return trend_df
     
     
     def _classify_trend(self, growth_rate: float) -> str:
+        """
+        Classify trend based on growth rate.
+        
+        Args:
+            growth_rate: Growth rate percentage
+            
+        Returns:
+            Trend classification string
+        """
         
         if growth_rate >= 50:
             return "STRONG GROWTH"
@@ -177,31 +242,59 @@ class TrendAnalyzer:
     
     
     def _classify_overall_trend(self, volume_growth: float, transaction_growth: float) -> str:
+        """
+        Classify overall trend considering both volume and transaction growth.
         
+        Args:
+            volume_growth: Volume growth rate
+            transaction_growth: Transaction growth rate
+            
+        Returns:
+            Overall trend classification
+        """
+        
+        # Weight volume growth more heavily (70% vs 30%)
         weighted_growth = volume_growth * 0.7 + transaction_growth * 0.3
         
         return self._classify_trend(weighted_growth)
     
     
     def _calculate_momentum_scores(self, trend_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate momentum scores for trending categories.
+        
+        Args:
+            trend_df: DataFrame with trend analysis
+            
+        Returns:
+            DataFrame with momentum scores
+        """
         
         if trend_df.empty:
             return pd.DataFrame()
         
         momentum_df = trend_df.copy()
         
+        # Calculate momentum score (0-100)
+        # Based on growth rate, trend strength, and market share change
         momentum_df['momentum_score'] = (
+            # Growth rate component (40%)
             (momentum_df['volume_growth_rate'].clip(-100, 100) + 100) / 2 * 0.4 +
+            # Trend strength component (30%)
             (momentum_df['trend_strength'] / 200 * 100) * 0.3 +
+            # Market share change component (30%)
             ((momentum_df['market_share_change'].clip(-10, 10) + 10) / 20 * 100) * 0.3
         ).round(1)
         
+        # Normalize to 0-100 scale
         momentum_df['momentum_score'] = momentum_df['momentum_score'].clip(0, 100)
         
+        # Momentum classification
         momentum_df['momentum_class'] = momentum_df['momentum_score'].apply(
             lambda x: "HIGH" if x >= 70 else "MEDIUM" if x >= 40 else "LOW"
         )
         
+        # Investment recommendation
         momentum_df['recommendation'] = momentum_df.apply(
             self._get_investment_recommendation, axis=1
         )
@@ -210,6 +303,15 @@ class TrendAnalyzer:
     
     
     def _get_investment_recommendation(self, row) -> str:
+        """
+        Get investment recommendation based on trend analysis.
+        
+        Args:
+            row: DataFrame row with trend metrics
+            
+        Returns:
+            Investment recommendation string
+        """
         
         overall_trend = row['overall_trend']
         momentum_score = row['momentum_score']
@@ -230,6 +332,15 @@ class TrendAnalyzer:
     
     
     def get_category_trend_analysis(self, category: str) -> Optional[Dict]:
+        """
+        Get detailed trend analysis for a specific category.
+        
+        Args:
+            category: Project category name
+            
+        Returns:
+            Dictionary with trend analysis results or None if not found
+        """
         
         if self.momentum_scores is None or category not in self.momentum_scores.index:
             return None
@@ -257,10 +368,20 @@ class TrendAnalyzer:
     
     
     def get_top_growing_categories(self, top_n: int = 10) -> List[Dict]:
+        """
+        Get categories with strongest growth trends.
+        
+        Args:
+            top_n: Number of top categories to return
+            
+        Returns:
+            List of top growing categories
+        """
         
         if self.momentum_scores is None:
             return []
         
+        # Filter for positive growth
         growing = self.momentum_scores[self.momentum_scores['volume_growth_rate'] > 0]
         top_growing = growing.head(top_n)
         
@@ -279,10 +400,20 @@ class TrendAnalyzer:
     
     
     def get_declining_categories(self, top_n: int = 10) -> List[Dict]:
+        """
+        Get categories with strongest declining trends.
+        
+        Args:
+            top_n: Number of top declining categories to return
+            
+        Returns:
+            List of declining categories
+        """
         
         if self.momentum_scores is None:
             return []
         
+        # Filter for negative growth and sort by worst decline
         declining = self.momentum_scores[self.momentum_scores['volume_growth_rate'] < 0]
         declining_sorted = declining.sort_values('volume_growth_rate')
         top_declining = declining_sorted.head(top_n)
@@ -302,23 +433,35 @@ class TrendAnalyzer:
     
     
     def get_market_trend_insights(self) -> Dict:
+        """
+        Generate market-wide trend insights.
+        
+        Returns:
+            Dictionary with market trend insights
+        """
         
         if self.momentum_scores is None:
             return {}
         
+        # Overall market statistics
         total_categories = len(self.momentum_scores)
         
+        # Trend distribution
         trend_counts = self.momentum_scores['overall_trend'].value_counts()
         
+        # Growth statistics
         positive_growth = len(self.momentum_scores[self.momentum_scores['volume_growth_rate'] > 0])
         negative_growth = len(self.momentum_scores[self.momentum_scores['volume_growth_rate'] < 0])
         stable = total_categories - positive_growth - negative_growth
         
+        # Momentum distribution
         momentum_counts = self.momentum_scores['momentum_class'].value_counts()
         
+        # Market leaders
         top_growth = self.momentum_scores.iloc[0] if not self.momentum_scores.empty else None
         worst_decline = self.momentum_scores.iloc[-1] if not self.momentum_scores.empty else None
         
+        # Average metrics
         avg_growth = self.momentum_scores['volume_growth_rate'].mean()
         avg_momentum = self.momentum_scores['momentum_score'].mean()
         
@@ -357,6 +500,17 @@ class TrendAnalyzer:
     
     
     def _assess_market_health(self, avg_growth: float, growing_count: int, total_count: int) -> str:
+        """
+        Assess overall market health based on trend metrics.
+        
+        Args:
+            avg_growth: Average growth rate
+            growing_count: Number of growing categories
+            total_count: Total categories analyzed
+            
+        Returns:
+            Market health assessment string
+        """
         
         if total_count == 0:
             return "INSUFFICIENT DATA"
@@ -376,20 +530,34 @@ class TrendAnalyzer:
     
     
     def project_future_trends(self, category: str, months_ahead: int = 12) -> Optional[Dict]:
+        """
+        Project future trends for a specific category.
+        
+        Args:
+            category: Project category name
+            months_ahead: Number of months to project ahead
+            
+        Returns:
+            Dictionary with trend projections or None if not possible
+        """
         
         trend_data = self.get_category_trend_analysis(category)
         
         if not trend_data:
             return None
         
+        # Simple linear projection based on recent growth rate
         current_annual_volume = trend_data['recent_annual_volume']
         growth_rate = trend_data['volume_growth_rate'] / 100
         
+        # Project volume
         years_ahead = months_ahead / 12
         projected_volume = current_annual_volume * (1 + growth_rate) ** years_ahead
         
+        # Confidence level based on trend strength and momentum
         confidence = min(100, trend_data['momentum_score'] + trend_data['trend_strength'] / 2)
         
+        # Risk assessment
         if trend_data['overall_trend'] in ["STRONG DECLINE", "MODERATE DECLINE"]:
             risk_level = "HIGH"
         elif trend_data['overall_trend'] in ["SLIGHT DECLINE", "STABLE"]:

@@ -26,8 +26,20 @@ import calendar
 
 
 class SeasonalActivityPredictor:
+    """
+    Predicts optimal timing for carbon credit transactions based on historical seasonal patterns.
+    
+    This calculator uses 22.5 years of real transaction data to identify the best
+    and worst months for market activity, helping users optimize transaction timing.
+    """
     
     def __init__(self, df: pd.DataFrame):
+        """
+        Initialize the predictor with historical transaction data.
+        
+        Args:
+            df: DataFrame containing historical carbon credit transactions
+        """
         self.df = df
         self.monthly_patterns = None
         self.category_patterns = None
@@ -35,18 +47,28 @@ class SeasonalActivityPredictor:
     
     
     def _analyze_seasonal_patterns(self) -> None:
+        """
+        Analyze seasonal patterns from historical data.
         
+        This method calculates real monthly activity indices and category-specific
+        patterns based on actual transaction volumes and frequencies.
+        """
+        
+        # Overall monthly patterns (all categories combined)
         monthly_volumes = self.df.groupby(self.df['transaction_date'].dt.month)['credits_quantity'].agg([
             'sum', 'count', 'mean'
         ]).round(0)
         
+        # Normalize to 0-100 scale (April = 100, others relative)
         max_volume = monthly_volumes['sum'].max()
         monthly_volumes['activity_index'] = (monthly_volumes['sum'] / max_volume * 100).round(1)
         
+        # Add month names
         monthly_volumes['month_name'] = [calendar.month_name[i] for i in monthly_volumes.index]
         
         self.monthly_patterns = monthly_volumes
         
+        # Category-specific patterns (top categories only for performance)
         top_categories = self.df['project_category'].value_counts().head(10).index
         
         category_seasonal = {}
@@ -56,6 +78,7 @@ class SeasonalActivityPredictor:
                 'sum', 'count'
             ])
             
+            # Normalize to 0-100 scale
             if not cat_monthly.empty:
                 max_cat_volume = cat_monthly['sum'].max()
                 cat_monthly['activity_index'] = (cat_monthly['sum'] / max_cat_volume * 100).round(1)
@@ -66,24 +89,46 @@ class SeasonalActivityPredictor:
     
     
     def get_monthly_activity_index(self, month: int, category: Optional[str] = None) -> float:
+        """
+        Get activity index for a specific month.
+        
+        Args:
+            month: Month number (1-12)
+            category: Optional specific project category
+            
+        Returns:
+            Activity index (0-100 scale)
+        """
         
         if category and category in self.category_patterns:
             if month in self.category_patterns[category].index:
                 return self.category_patterns[category].loc[month, 'activity_index']
         
+        # Use overall patterns as fallback
         if month in self.monthly_patterns.index:
             return self.monthly_patterns.loc[month, 'activity_index']
         
-        return 50.0
+        return 50.0  # Default neutral activity
     
     
     def get_best_months(self, category: Optional[str] = None, top_n: int = 3) -> List[Dict]:
+        """
+        Identify the best months for activity.
+        
+        Args:
+            category: Optional specific project category
+            top_n: Number of top months to return
+            
+        Returns:
+            List of dictionaries with month info and activity indices
+        """
         
         if category and category in self.category_patterns:
             patterns = self.category_patterns[category].copy()
         else:
             patterns = self.monthly_patterns.copy()
         
+        # Sort by activity index descending
         top_months = patterns.nlargest(top_n, 'activity_index')
         
         result = []
@@ -99,12 +144,23 @@ class SeasonalActivityPredictor:
     
     
     def get_worst_months(self, category: Optional[str] = None, top_n: int = 3) -> List[Dict]:
+        """
+        Identify the worst months for activity.
+        
+        Args:
+            category: Optional specific project category
+            top_n: Number of worst months to return
+            
+        Returns:
+            List of dictionaries with month info and activity indices
+        """
         
         if category and category in self.category_patterns:
             patterns = self.category_patterns[category].copy()
         else:
             patterns = self.monthly_patterns.copy()
         
+        # Sort by activity index ascending
         worst_months = patterns.nsmallest(top_n, 'activity_index')
         
         result = []
@@ -120,6 +176,15 @@ class SeasonalActivityPredictor:
     
     
     def _get_timing_recommendation(self, activity_index: float) -> str:
+        """
+        Get timing recommendation based on activity index.
+        
+        Args:
+            activity_index: Activity index (0-100)
+            
+        Returns:
+            Timing recommendation string
+        """
         
         if activity_index >= 80:
             return "OPTIMAL"
@@ -132,13 +197,25 @@ class SeasonalActivityPredictor:
     
     
     def calculate_timing_score(self, target_month: int, category: Optional[str] = None) -> Dict:
+        """
+        Calculate comprehensive timing score for a specific month.
+        
+        Args:
+            target_month: Target month (1-12)
+            category: Optional project category
+            
+        Returns:
+            Dictionary with timing analysis results
+        """
         
         activity_index = self.get_monthly_activity_index(target_month, category)
         month_name = calendar.month_name[target_month]
         
+        # Get comparative context
         best_months = self.get_best_months(category, 3)
         worst_months = self.get_worst_months(category, 3)
         
+        # Calculate relative position
         all_indices = [self.get_monthly_activity_index(m, category) for m in range(1, 13)]
         percentile_rank = (sum(1 for x in all_indices if x <= activity_index) / len(all_indices)) * 100
         
@@ -157,6 +234,15 @@ class SeasonalActivityPredictor:
     
     
     def generate_annual_calendar(self, category: Optional[str] = None) -> pd.DataFrame:
+        """
+        Generate annual activity calendar with monthly recommendations.
+        
+        Args:
+            category: Optional project category
+            
+        Returns:
+            DataFrame with monthly activity calendar
+        """
         
         calendar_data = []
         
@@ -189,9 +275,19 @@ class SeasonalActivityPredictor:
     
     
     def get_market_insights(self, category: Optional[str] = None) -> Dict:
+        """
+        Generate strategic market timing insights.
+        
+        Args:
+            category: Optional project category
+            
+        Returns:
+            Dictionary with market insights
+        """
         
         patterns = self.category_patterns.get(category, self.monthly_patterns) if category else self.monthly_patterns
         
+        # Calculate seasonal metrics
         peak_month = patterns['activity_index'].idxmax()
         low_month = patterns['activity_index'].idxmin()
         peak_value = patterns['activity_index'].max()
@@ -200,6 +296,7 @@ class SeasonalActivityPredictor:
         seasonal_variation = peak_value - low_value
         avg_activity = patterns['activity_index'].mean()
         
+        # Q1, Q2, Q3, Q4 analysis
         quarterly_analysis = {
             'Q1 (Jan-Mar)': patterns.loc[patterns.index.isin([1,2,3]), 'activity_index'].mean(),
             'Q2 (Apr-Jun)': patterns.loc[patterns.index.isin([4,5,6]), 'activity_index'].mean(),

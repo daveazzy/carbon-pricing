@@ -1,39 +1,34 @@
+# src/modules/data_loader.py (Corrigido)
 import pandas as pd
 import streamlit as st
-from pathlib import Path
-
 
 @st.cache_data
-def load_credits_data():
-    
+def carregar_e_preparar_dados():
     try:
-        credits_path = Path("data/credits.csv")
-        credits = pd.read_csv(credits_path)
-        credits['transaction_date'] = pd.to_datetime(credits['transaction_date'])
-        return credits
-    except Exception as e:
-        st.error(f"Erro ao carregar dados de créditos: {e}")
+        # Adicionado low_memory=False para silenciar o DtypeWarning
+        credits_df = pd.read_csv('data/credits.csv', low_memory=False)
+        projects_df = pd.read_csv('data/projects.csv', low_memory=False)
+    except FileNotFoundError:
+        st.error("Erro: Ficheiros 'credits.csv' ou 'projects.csv' não encontrados na pasta 'data'.")
         return None
 
+    merged_df = pd.merge(credits_df, projects_df, on='project_id', how='left')
+    rename_dict = {
+        'quantity': 'credits_quantity',
+        'vintage': 'credit_vintage_year',
+        'project_type': 'project_category',
+        'country': 'project_country'
+    }
+    merged_df.rename(columns=rename_dict, inplace=True)
 
-@st.cache_data  
-def load_projects_data():
-    
-    try:
-        projects_path = Path("data/projects.csv")
-        projects = pd.read_csv(projects_path)
-        return projects
-    except Exception as e:
-        st.error(f"Erro ao carregar dados de projetos: {e}")
-        return None
+    current_year = pd.to_datetime('today').year
+    historical_df = merged_df[merged_df['credit_vintage_year'] <= current_year].copy()
 
+    historical_df['transaction_date'] = pd.to_datetime(historical_df['transaction_date'], errors='coerce')
+    historical_df.dropna(subset=['transaction_date'], inplace=True)
+    historical_df['credit_age_at_transaction'] = historical_df['transaction_date'].dt.year - historical_df['credit_vintage_year']
 
-def load_all_data():
-    
-    credits = load_credits_data()
-    projects = load_projects_data()
-    
-    if credits is not None and projects is not None:
-        return credits, projects
-    else:
-        return None, None
+    cols_to_check = ['credits_quantity', 'credit_age_at_transaction', 'project_category', 'project_country']
+    historical_df.dropna(subset=cols_to_check, inplace=True)
+
+    return historical_df
