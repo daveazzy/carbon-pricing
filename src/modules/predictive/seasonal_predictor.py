@@ -54,21 +54,19 @@ class SeasonalActivityPredictor:
         patterns based on actual transaction volumes and frequencies.
         """
         
-        # Overall monthly patterns (all categories combined)
+        # padrão mensal total (todas as categorias)
         monthly_volumes = self.df.groupby(self.df['transaction_date'].dt.month)['credits_quantity'].agg([
             'sum', 'count', 'mean'
         ]).round(0)
         
-        # Normalize to 0-100 scale (April = 100, others relative)
+        # normalizar esacla 0 a 100
         max_volume = monthly_volumes['sum'].max()
         monthly_volumes['activity_index'] = (monthly_volumes['sum'] / max_volume * 100).round(1)
         
-        # Add month names
         monthly_volumes['month_name'] = [calendar.month_name[i] for i in monthly_volumes.index]
         
         self.monthly_patterns = monthly_volumes
         
-        # Category-specific patterns (top categories only for performance)
         top_categories = self.df['project_category'].value_counts().head(10).index
         
         category_seasonal = {}
@@ -78,7 +76,6 @@ class SeasonalActivityPredictor:
                 'sum', 'count'
             ])
             
-            # Normalize to 0-100 scale
             if not cat_monthly.empty:
                 max_cat_volume = cat_monthly['sum'].max()
                 cat_monthly['activity_index'] = (cat_monthly['sum'] / max_cat_volume * 100).round(1)
@@ -104,11 +101,10 @@ class SeasonalActivityPredictor:
             if month in self.category_patterns[category].index:
                 return self.category_patterns[category].loc[month, 'activity_index']
         
-        # Use overall patterns as fallback
         if month in self.monthly_patterns.index:
             return self.monthly_patterns.loc[month, 'activity_index']
         
-        return 50.0  # Default neutral activity
+        return 50.0 
     
     
     def get_best_months(self, category: Optional[str] = None, top_n: int = 3) -> List[Dict]:
@@ -128,7 +124,6 @@ class SeasonalActivityPredictor:
         else:
             patterns = self.monthly_patterns.copy()
         
-        # Sort by activity index descending
         top_months = patterns.nlargest(top_n, 'activity_index')
         
         result = []
@@ -160,7 +155,6 @@ class SeasonalActivityPredictor:
         else:
             patterns = self.monthly_patterns.copy()
         
-        # Sort by activity index ascending
         worst_months = patterns.nsmallest(top_n, 'activity_index')
         
         result = []
@@ -211,11 +205,9 @@ class SeasonalActivityPredictor:
         activity_index = self.get_monthly_activity_index(target_month, category)
         month_name = calendar.month_name[target_month]
         
-        # Get comparative context
         best_months = self.get_best_months(category, 3)
         worst_months = self.get_worst_months(category, 3)
         
-        # Calculate relative position
         all_indices = [self.get_monthly_activity_index(m, category) for m in range(1, 13)]
         percentile_rank = (sum(1 for x in all_indices if x <= activity_index) / len(all_indices)) * 100
         
@@ -287,7 +279,7 @@ class SeasonalActivityPredictor:
         
         patterns = self.category_patterns.get(category, self.monthly_patterns) if category else self.monthly_patterns
         
-        # Calculate seasonal metrics
+        # calcular sazonalidade
         peak_month = patterns['activity_index'].idxmax()
         low_month = patterns['activity_index'].idxmin()
         peak_value = patterns['activity_index'].max()
@@ -296,7 +288,7 @@ class SeasonalActivityPredictor:
         seasonal_variation = peak_value - low_value
         avg_activity = patterns['activity_index'].mean()
         
-        # Q1, Q2, Q3, Q4 analysis
+        # Q1, Q2, Q3, Q4
         quarterly_analysis = {
             'Q1 (Jan-Mar)': patterns.loc[patterns.index.isin([1,2,3]), 'activity_index'].mean(),
             'Q2 (Apr-Jun)': patterns.loc[patterns.index.isin([4,5,6]), 'activity_index'].mean(),
@@ -332,19 +324,15 @@ def render_seasonal_predictor_interface(df: pd.DataFrame) -> None:
         df: DataFrame containing historical transaction data
     """
     
-    # Section title
     st.markdown("### 📅 Preditor de Atividade Sazonal")
     st.markdown("*Otimize o timing de suas transações usando análise sazonal histórica baseada em dados reais*")
     
-    # Initialize predictor
     with st.spinner("🔄 Analisando padrões sazonais históricos..."):
         predictor = SeasonalActivityPredictor(df)
     
-    # Configuration section
     st.markdown('<div class="input-group">', unsafe_allow_html=True)
     st.markdown("**⚙️ Configuração da Análise**")
     
-    # Category selection
     available_categories = ["Mercado Geral"] + list(predictor.category_patterns.keys())
     selected_category = st.selectbox(
         "Categoria para Análise",
@@ -353,7 +341,6 @@ def render_seasonal_predictor_interface(df: pd.DataFrame) -> None:
         key="seasonal_category"
     )
     
-    # Analysis type
     analysis_type = st.radio(
         "**Tipo de Análise Desejada**",
         ["📊 Análise Completa", "🎯 Timing Ótimo Apenas"],
@@ -364,7 +351,6 @@ def render_seasonal_predictor_interface(df: pd.DataFrame) -> None:
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Execute analysis button
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         execute_analysis = st.button(
@@ -375,7 +361,6 @@ def render_seasonal_predictor_interface(df: pd.DataFrame) -> None:
         )
     
     if execute_analysis:
-        # Render analysis based on selection
         with st.spinner("🔄 Processando análise sazonal..."):
             if selected_category == "Mercado Geral":
                 render_market_seasonal_analysis(predictor, analysis_type)
@@ -387,14 +372,12 @@ def render_market_seasonal_analysis(predictor: SeasonalActivityPredictor, analys
     """Render market-wide seasonal analysis."""
     
     if analysis_type == "📊 Análise Completa":
-        # Full analysis with all components
         render_timing_analysis(predictor, None)
         st.markdown("---")
         render_annual_calendar(predictor, None)
         st.markdown("---") 
         render_market_insights(predictor, None)
     else:
-        # Just timing analysis
         render_timing_analysis(predictor, None)
 
 
@@ -402,24 +385,20 @@ def render_category_seasonal_analysis(predictor: SeasonalActivityPredictor, cate
     """Render category-specific seasonal analysis."""
     
     if analysis_type == "📊 Análise Completa":
-        # Full analysis with all components
         render_timing_analysis(predictor, category)
         st.markdown("---")
         render_annual_calendar(predictor, category)
         st.markdown("---")
         render_market_insights(predictor, category)
     else:
-        # Just timing analysis
         render_timing_analysis(predictor, category)
 
 
 def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optional[str]) -> None:
     """Render timing analysis interface with improved UX."""
     
-    # Section title
     st.markdown("### 🎯 Análise de Timing por Mês")
     
-    # Month selection section
     st.markdown('<div class="input-group">', unsafe_allow_html=True)
     st.markdown("**📅 Configuração do Timing**")
     
@@ -442,7 +421,7 @@ def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optio
         )
     
     with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Spacer
+        st.markdown("<br>", unsafe_allow_html=True)  
         analyze_timing = st.button(
             "🔍 ANALISAR TIMING", 
             type="primary",
@@ -453,15 +432,13 @@ def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optio
     st.markdown('</div>', unsafe_allow_html=True)
     
     if analyze_timing:
-        # Calculate timing score
+        # calcular score de timing
         with st.spinner("🔄 Calculando índices de timing..."):
             result = predictor.calculate_timing_score(target_month, category)
         
-        # Results container
         st.markdown('<div class="results-container">', unsafe_allow_html=True)
         st.markdown("### 📊 Resultados da Análise de Timing")
         
-        # Main metrics with enhanced display
         st.markdown("#### 🎯 Métricas de Performance")
         metric_col1, metric_col2, metric_col3 = st.columns(3)
         
@@ -486,7 +463,6 @@ def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optio
                 help="% de meses com atividade menor"
             )
         
-        # Enhanced timing recommendations
         month_name_pt = month_names_pt[target_month]
         st.markdown("#### 💡 Interpretação dos Resultados")
         
@@ -519,7 +495,6 @@ def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optio
             ⚠️ **Ação Recomendada**: Evite este período para transações críticas.
             """)
         
-        # Comparative context with improved layout
         st.markdown("#### 📈 Contexto Comparativo do Mercado")
         
         comp_col1, comp_col2 = st.columns(2)
@@ -540,18 +515,14 @@ def render_timing_analysis(predictor: SeasonalActivityPredictor, category: Optio
 def render_annual_calendar(predictor: SeasonalActivityPredictor, category: Optional[str]) -> None:
     """Render annual calendar interface with improved UX."""
     
-    # Section title
     st.markdown("### 📅 Calendário de Atividade Anual")
     
-    # Generate calendar
     with st.spinner("🔄 Gerando calendário sazonal..."):
         calendar_df = predictor.generate_annual_calendar(category)
     
-    # Results container
     st.markdown('<div class="results-container">', unsafe_allow_html=True)
     st.markdown("### 📊 Calendário Sazonal Interativo")
     
-    # Display calendar with enhanced styling
     st.dataframe(
         calendar_df.style.format({
             'activity_index': '{:.1f}'
@@ -561,7 +532,6 @@ def render_annual_calendar(predictor: SeasonalActivityPredictor, category: Optio
         height=400
     )
     
-    # Enhanced legend with better organization
     st.markdown("#### 📝 Guia de Interpretação")
     
     legend_col1, legend_col2 = st.columns(2)
@@ -580,7 +550,6 @@ def render_annual_calendar(predictor: SeasonalActivityPredictor, category: Optio
         - 🔴 **EVITAR** (0-39): Baixa atividade - aguardar melhor timing
         """)
     
-    # Strategic insights
     st.markdown("#### 💡 Insights Estratégicos")
     st.info("""
     **📈 Como usar este calendário:**
@@ -596,18 +565,14 @@ def render_annual_calendar(predictor: SeasonalActivityPredictor, category: Optio
 def render_market_insights(predictor: SeasonalActivityPredictor, category: Optional[str]) -> None:
     """Render market insights interface with improved UX."""
     
-    # Section title
     st.markdown("### 🧠 Insights Estratégicos de Mercado")
     
-    # Get insights
     with st.spinner("🔄 Gerando insights estratégicos..."):
         insights = predictor.get_market_insights(category)
     
-    # Results container
     st.markdown('<div class="results-container">', unsafe_allow_html=True)
     st.markdown("### 🎯 Análise Estratégica Sazonal")
     
-    # Key metrics with enhanced presentation
     st.markdown("#### 📊 Métricas Sazonais Principais")
     
     insight_col1, insight_col2, insight_col3, insight_col4 = st.columns(4)
@@ -642,8 +607,7 @@ def render_market_insights(predictor: SeasonalActivityPredictor, category: Optio
             help="Classificação da volatilidade sazonal"
         )
     
-    # Quarterly analysis with improved layout
-    st.markdown("#### 📈 Análise Trimestral Detalhada")
+    st.markdown("#### 📈 Análise Bimestral Detalhada")
     
     quarterly_col1, quarterly_col2 = st.columns(2)
     
@@ -657,7 +621,6 @@ def render_market_insights(predictor: SeasonalActivityPredictor, category: Optio
         st.markdown(f"• **Q3 (Jul-Set)**: {insights['quarterly_analysis']['Q3 (Jul-Sep)']} pts")
         st.markdown(f"• **Q4 (Out-Dez)**: {insights['quarterly_analysis']['Q4 (Oct-Dec)']} pts")
     
-    # Strategic recommendations based on seasonality
     st.markdown("#### 💰 Recomendações Estratégicas")
     
     if insights['market_volatility'] == 'HIGH':
@@ -682,7 +645,6 @@ def render_market_insights(predictor: SeasonalActivityPredictor, category: Optio
         📅 **Vantagem**: Menor dependência de sazonalidade para decisões.
         """)
     
-    # Best quarter insights
     st.markdown("#### 🏆 Análise dos Melhores Períodos")
     st.success(f"""
     **🥇 MELHOR TRIMESTRE**: {insights['best_quarter']}  
