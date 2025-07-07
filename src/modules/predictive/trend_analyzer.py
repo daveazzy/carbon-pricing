@@ -265,26 +265,19 @@ class TrendAnalyzer:
         
         momentum_df = trend_df.copy()
         
-        # Calculate momentum score (0-100)
-        # Based on growth rate, trend strength, and market share change
+        # calcular score com base no indice de crescimento, trend e mudança de mercado
         momentum_df['momentum_score'] = (
-            # Growth rate component (40%)
             (momentum_df['volume_growth_rate'].clip(-100, 100) + 100) / 2 * 0.4 +
-            # Trend strength component (30%)
             (momentum_df['trend_strength'] / 200 * 100) * 0.3 +
-            # Market share change component (30%)
             ((momentum_df['market_share_change'].clip(-10, 10) + 10) / 20 * 100) * 0.3
         ).round(1)
         
-        # Normalize to 0-100 scale
         momentum_df['momentum_score'] = momentum_df['momentum_score'].clip(0, 100)
         
-        # Momentum classification
         momentum_df['momentum_class'] = momentum_df['momentum_score'].apply(
             lambda x: "HIGH" if x >= 70 else "MEDIUM" if x >= 40 else "LOW"
         )
         
-        # Investment recommendation
         momentum_df['recommendation'] = momentum_df.apply(
             self._get_investment_recommendation, axis=1
         )
